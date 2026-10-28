@@ -14,6 +14,4 @@ A simple web tool for designing clay tile patterns on a grid of squares.
 
 ## Usage
 
-Open `index.html` in a browser, or visit the GitHub Pages site for this repository.
-
-To publish with GitHub Pages: go to **Settings → Pages**, choose **Deploy from a branch**, select `main` and `/ (root)`.
+Use it online at https://ranecdev.github.io/clay-tile-designer/, or open `index.html` in a browser.
