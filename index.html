@@ -543,7 +543,7 @@
     const fy = y => h > 1 ? y / (h - 1) : 0.5;
     if (reroll || !gNoise || gNoise.length !== w * h)
       gNoise = Array.from({ length: w * h }, () => Math.random() - 0.5);
-    const base = new Array(w * h);
+    const cells = new Array(w * h);
     for (let y = 0; y < h; y++)
       for (let x = 0; x < w; x++) {
         let t;
@@ -555,31 +555,13 @@
         if (mirror) t = 1 - Math.abs(2 * t - 1);
         if (reverse) t = 1 - t;
         const pos = t * n - 0.5 + gNoise[y * w + x] * blend;
-        base[y * w + x] = Math.max(0, Math.min(n - 1, Math.round(pos)));
+        const band = Math.max(0, Math.min(n - 1, Math.round(pos)));
+        // mix moves each square from its band color toward the smooth gradient,
+        // shading it between the two nearest palette colors
+        const q = band * (1 - mix) + t * (n - 1) * mix;
+        const a = Math.min(Math.floor(q), n - 1), f = q - a;
+        cells[y * w + x] = toCell(new Map(a < n - 1 ? [[a, 1 - f], [a + 1, f]] : [[a, 1]]));
       }
-
-    // mix: blend each square with the average of itself and its neighbors,
-    // so colors stay in place and only soften into each other
-    const cells = base.slice();
-    if (mix > 0)
-      for (let y = 0; y < h; y++)
-        for (let x = 0; x < w; x++) {
-          const avg = new Map();
-          let count = 0;
-          for (let dy = -1; dy <= 1; dy++)
-            for (let dx = -1; dx <= 1; dx++) {
-              const nx = x + dx, ny = y + dy;
-              if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-              const k = base[ny * w + nx];
-              avg.set(k, (avg.get(k) || 0) + 1);
-              count++;
-            }
-          const own = base[y * w + x];
-          const weights = new Map();
-          for (const [k, c] of avg) weights.set(k, mix * c / count);
-          weights.set(own, (weights.get(own) || 0) + (1 - mix));
-          cells[y * w + x] = toCell(weights);
-        }
     state.cells = cells;
     draw(); save();
   }
