@@ -127,6 +127,17 @@
   .tools-sep { height: 1px; background: var(--border); margin: 4px 0; }
   .check { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; cursor: pointer; }
   .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  select {
+    font: inherit;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    min-height: 40px;
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
 
   /* Canvas area */
   .stage {
@@ -184,6 +195,28 @@
       </div>
       <div class="tools-sep" style="margin:12px 0"></div>
       <div class="palette" id="tools"></div>
+    </section>
+
+    <section class="card">
+      <h2>Gradient</h2>
+      <div class="stack">
+        <label class="field">Direction
+          <select id="gDir">
+            <option value="horizontal">Left → right</option>
+            <option value="vertical">Top → bottom</option>
+            <option value="diagonal">Diagonal ↘</option>
+            <option value="antidiagonal">Diagonal ↙</option>
+            <option value="radial">Radial (center out)</option>
+          </select>
+        </label>
+        <label class="field">Blend: <span id="gBlendVal">50%</span>
+          <input type="range" id="gBlend" min="0" max="100" value="50">
+        </label>
+        <label class="check"><input type="checkbox" id="gMirror"> Mirror (symmetric, repeats seamlessly)</label>
+        <label class="check"><input type="checkbox" id="gReverse"> Reverse color order</label>
+        <button id="gApply" class="primary">Apply gradient</button>
+        <p class="hint" style="text-align:left">Uses your colors in palette order. Adjusting settings after applying updates the gradient live.</p>
+      </div>
     </section>
 
     <section class="card">
@@ -456,6 +489,51 @@
     const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
     return '#' + [f(0), f(8), f(4)].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
   }
+
+  // ---------- gradient ----------
+  // Squares stay palette indices: each square's position maps to a point along
+  // the palette, and "blend" adds random jitter so bands dither into each other.
+  let gradientLive = false;
+
+  function applyGradient() {
+    const n = state.colors.length;
+    const dir = $('gDir').value;
+    const blend = (+$('gBlend').value / 100) * 1.5;
+    const mirror = $('gMirror').checked;
+    const reverse = $('gReverse').checked;
+    const { w, h } = state;
+    const fx = x => w > 1 ? x / (w - 1) : 0.5;
+    const fy = y => h > 1 ? y / (h - 1) : 0.5;
+    const cells = new Array(w * h);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        let t;
+        if (dir === 'horizontal') t = fx(x);
+        else if (dir === 'vertical') t = fy(y);
+        else if (dir === 'diagonal') t = (fx(x) + fy(y)) / 2;
+        else if (dir === 'antidiagonal') t = (1 - fx(x) + fy(y)) / 2;
+        else t = Math.min(1, Math.hypot(fx(x) - 0.5, fy(y) - 0.5) / Math.SQRT1_2);
+        if (mirror) t = 1 - Math.abs(2 * t - 1);
+        if (reverse) t = 1 - t;
+        const pos = t * n - 0.5 + (Math.random() - 0.5) * blend;
+        cells[y * w + x] = Math.max(0, Math.min(n - 1, Math.round(pos)));
+      }
+    state.cells = cells;
+    draw(); save();
+  }
+
+  $('gApply').addEventListener('click', () => {
+    snapshot(); applyGradient(); gradientLive = true;
+  });
+  $('gBlend').addEventListener('input', () => { $('gBlendVal').textContent = $('gBlend').value + '%'; });
+  ['gDir', 'gBlend', 'gMirror', 'gReverse'].forEach(id =>
+    $(id).addEventListener('input', () => { if (gradientLive) applyGradient(); }));
+  // any other edit ends the live-update session so tweaks don't overwrite painting
+  canvas.addEventListener('pointerdown', () => { gradientLive = false; });
+  document.querySelector('aside').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b && b.id !== 'gApply') gradientLive = false;
+  });
 
   // ---------- actions ----------
   function exportPNG() {
