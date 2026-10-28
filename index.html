@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clay Tile Designer</title>
+<style>
+  :root {
+    --bg: #f6f1ea;
+    --panel: #fffdf9;
+    --text: #3a2e26;
+    --muted: #8a7a6d;
+    --border: #e2d6c8;
+    --accent: #b5562f;
+    --accent-text: #fff;
+    --empty: #ffffff;
+    --gridline: rgba(0, 0, 0, 0.12);
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 1.25rem; font-weight: 650; letter-spacing: 0.01em; }
+  main {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  aside { display: flex; flex-direction: column; gap: 14px; }
+  section.card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+  section.card h2 {
+    margin: 0 0 10px;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+  input[type=number] {
+    width: 80px;
+    padding: 8px;
+    font-size: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+  }
+  button {
+    font: inherit;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+    min-height: 40px;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.primary:hover { filter: brightness(1.08); }
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* Palette */
+  .palette { display: flex; flex-direction: column; gap: 8px; }
+  .swatch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .swatch:hover { background: #f8f2eb; }
+  .swatch.active { border-color: var(--accent); background: #fbf3ec; }
+  .swatch .chip {
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.15);
+    flex-shrink: 0;
+  }
+  .swatch .name { flex: 1; font-size: 0.9rem; }
+  .swatch .name small { display: block; color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.75rem; }
+  .swatch input[type=color] {
+    width: 40px; height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .swatch .remove {
+    min-height: 36px; width: 36px; padding: 0;
+    font-size: 1.1rem; line-height: 1; color: var(--muted);
+  }
+  .chip.eraser {
+    background:
+      linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%),
+      linear-gradient(45deg, #ddd 25%, #fff 25%, #fff 75%, #ddd 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 6px 6px;
+  }
+  .chip.random {
+    background: conic-gradient(#b5562f, #e0a458, #6b8f71, #3d5a80, #b5562f);
+  }
+  .tools-sep { height: 1px; background: var(--border); margin: 4px 0; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; cursor: pointer; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+  /* Canvas area */
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+  }
+  .canvas-wrap { width: 100%; display: flex; justify-content: center; }
+  #grid {
+    touch-action: none;
+    cursor: crosshair;
+    display: block;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  }
+  .preview { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .preview h3 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+  #preview { display: block; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+  .hint { color: var(--muted); font-size: 0.85rem; text-align: center; margin: 0; }
+
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+    .stage { order: -1; padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<header><h1>Clay Tile Designer</h1></header>
+
+<main>
+  <aside>
+    <section class="card">
+      <h2>Grid size</h2>
+      <div class="row">
+        <label class="field">Width
+          <input type="number" id="w" min="1" max="100" value="8">
+        </label>
+        <label class="field">Height
+          <input type="number" id="h" min="1" max="100" value="8">
+        </label>
+        <button id="apply" class="primary">Apply</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Colors</h2>
+      <div class="palette" id="palette"></div>
+      <div style="margin-top:8px">
+        <button id="addColor" style="width:100%">+ Add color</button>
+      </div>
+      <div class="tools-sep" style="margin:12px 0"></div>
+      <div class="palette" id="tools"></div>
+    </section>
+
+    <section class="card">
+      <h2>Actions</h2>
+      <div class="btn-grid">
+        <button id="randomize" class="primary">Randomize all</button>
+        <button id="randomEmpty">Random fill empty</button>
+        <button id="fillAll">Fill with color</button>
+        <button id="clear">Clear</button>
+        <button id="undo">Undo</button>
+        <button id="export">Export PNG</button>
+      </div>
+      <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px">
+        <label class="check"><input type="checkbox" id="showLines" checked> Show grid lines</label>
+        <label class="check"><input type="checkbox" id="showPreview" checked> Show repeat preview</label>
+      </div>
+    </section>
+  </aside>
+
+  <div class="stage">
+    <div class="canvas-wrap" id="wrap"><canvas id="grid"></canvas></div>
+    <p class="hint">Tap or drag to paint. Pick a color, the eraser, or the random brush on the left.</p>
+    <div class="preview" id="previewBox">
+      <h3>Repeat preview (3 × 3)</h3>
+      <canvas id="preview"></canvas>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'clay-tile-designer-v1';
+  const DEFAULT_COLORS = ['#b5562f', '#e0a458', '#6b8f71', '#3d5a80'];
+  const EMPTY = -1;
+  const ERASE = 'erase', RANDOM = 'random';
+
+  // cells hold an index into colors (or EMPTY), so recoloring a palette entry
+  // automatically recolors every square that uses it.
+  let state = {
+    w: 8,
+    h: 8,
+    colors: DEFAULT_COLORS.slice(),
+    cells: new Array(64).fill(EMPTY),
+    brush: 0,
+    showLines: true,
+    showPreview: true,
+  };
+  const history = [];
+
+  const $ = id => document.getElementById(id);
+  const canvas = $('grid'), ctx = canvas.getContext('2d');
+  const pcanvas = $('preview'), pctx = pcanvas.getContext('2d');
+  let cellSize = 20;
+
+  // ---------- persistence ----------
+  function save() {
+    try {
+      const { w, h, colors, cells, showLines, showPreview } = state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ w, h, colors, cells, showLines, showPreview }));
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (s && s.w && s.h && Array.isArray(s.colors) && Array.isArray(s.cells) && s.cells.length === s.w * s.h) {
+        Object.assign(state, s);
+      }
+    } catch (e) {}
+  }
+
+  function snapshot() {
+    history.push({ w: state.w, h: state.h, colors: state.colors.slice(), cells: state.cells.slice() });
+    if (history.length > 100) history.shift();
+  }
+  function undo() {
+    const s = history.pop();
+    if (!s) return;
+    Object.assign(state, s);
+    if (typeof state.brush === 'number' && state.brush >= state.colors.length) state.brush = 0;
+    $('w').value = state.w; $('h').value = state.h;
+    renderPalette(); layout();
+  }
+
+  const randIndex = () => Math.floor(Math.random() * state.colors.length);
+
+  // ---------- grid ops ----------
+  function resize(w, h) {
+    w = Math.max(1, Math.min(100, w | 0));
+    h = Math.max(1, Math.min(100, h | 0));
+    if (w === state.w && h === state.h) return;
+    snapshot();
+    const next = new Array(w * h).fill(EMPTY);
+    for (let y = 0; y < Math.min(h, state.h); y++)
+      for (let x = 0; x < Math.min(w, state.w); x++)
+        next[y * w + x] = state.cells[y * state.w + x];
+    state.w = w; state.h = h; state.cells = next;
+    $('w').value = w; $('h').value = h;
+    layout(); save();
+  }
+
+  function layout() {
+    const wrap = $('wrap');
+    const availW = wrap.clientWidth;
+    const availH = Math.max(200, window.innerHeight * (window.innerWidth <= 800 ? 0.6 : 0.75));
+    cellSize = Math.max(4, Math.floor(Math.min(availW / state.w, availH / state.h, 80)));
+    sizeCanvas(canvas, ctx, state.w * cellSize, state.h * cellSize);
+    draw();
+  }
+
+  function sizeCanvas(c, cx, cssW, cssH) {
+    const dpr = window.devicePixelRatio || 1;
+    c.style.width = cssW + 'px';
+    c.style.height = cssH + 'px';
+    c.width = Math.round(cssW * dpr);
+    c.height = Math.round(cssH * dpr);
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function colorOf(i) { return i === EMPTY ? '#ffffff' : state.colors[i]; }
+
+  function paintTile(cx, ox, oy, size, lines) {
+    for (let y = 0; y < state.h; y++)
+      for (let x = 0; x < state.w; x++) {
+        cx.fillStyle = colorOf(state.cells[y * state.w + x]);
+        cx.fillRect(ox + x * size, oy + y * size, size, size);
+      }
+    if (lines) {
+      cx.strokeStyle = 'rgba(0,0,0,0.15)';
+      cx.lineWidth = 1;
+      cx.beginPath();
+      for (let x = 0; x <= state.w; x++) {
+        const px = Math.round(ox + x * size) + 0.5;
+        cx.moveTo(px, oy); cx.lineTo(px, oy + state.h * size);
+      }
+      for (let y = 0; y <= state.h; y++) {
+        const py = Math.round(oy + y * size) + 0.5;
+        cx.moveTo(ox, py); cx.lineTo(ox + state.w * size, py);
+      }
+      cx.stroke();
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    paintTile(ctx, 0, 0, cellSize, state.showLines);
+    drawPreview();
+  }
+
+  function drawPreview() {
+    $('previewBox').style.display = state.showPreview ? '' : 'none';
+    if (!state.showPreview) return;
+    const availW = $('wrap').clientWidth;
+    const s = Math.max(1, Math.floor(Math.min(availW / (state.w * 3), 400 / (state.h * 3))));
+    const tw = state.w * s, th = state.h * s;
+    sizeCanvas(pcanvas, pctx, tw * 3, th * 3);
+    for (let ty = 0; ty < 3; ty++)
+      for (let tx = 0; tx < 3; tx++)
+        paintTile(pctx, tx * tw, ty * th, s, false);
+    // faint seams between tiles
+    pctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    pctx.lineWidth = 1;
+    pctx.beginPath();
+    for (let i = 1; i < 3; i++) {
+      pctx.moveTo(i * tw + 0.5, 0); pctx.lineTo(i * tw + 0.5, th * 3);
+      pctx.moveTo(0, i * th + 0.5); pctx.lineTo(tw * 3, i * th + 0.5);
+    }
+    pctx.stroke();
+  }
+
+  // ---------- painting ----------
+  let painting = false, lastCell = -1;
+
+  function cellAt(e) {
+    const r = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - r.left) / cellSize);
+    const y = Math.floor((e.clientY - r.top) / cellSize);
+    if (x < 0 || y < 0 || x >= state.w || y >= state.h) return -1;
+    return y * state.w + x;
+  }
+
+  function applyBrush(i) {
+    if (i < 0 || i === lastCell) return;
+    lastCell = i;
+    const b = state.brush;
+    state.cells[i] = b === ERASE ? EMPTY : b === RANDOM ? randIndex() : b;
+    draw();
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    snapshot();
+    painting = true; lastCell = -1;
+    canvas.setPointerCapture(e.pointerId);
+    applyBrush(cellAt(e));
+  });
+  canvas.addEventListener('pointermove', e => { if (painting) applyBrush(cellAt(e)); });
+  const stop = () => { if (painting) { painting = false; save(); } };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+
+  // ---------- palette UI ----------
+  function renderPalette() {
+    const pal = $('palette');
+    pal.innerHTML = '';
+    state.colors.forEach((c, i) => {
+      const row = document.createElement('div');
+      row.className = 'swatch' + (state.brush === i ? ' active' : '');
+      row.innerHTML = `
+        <div class="chip" style="background:${c}"></div>
+        <div class="name">Color ${i + 1}<small>${c.toUpperCase()}</small></div>
+        <input type="color" value="${c}" aria-label="Change color ${i + 1}">
+        <button class="remove" title="Remove color" aria-label="Remove color ${i + 1}">×</button>`;
+      row.addEventListener('click', ev => {
+        if (ev.target.closest('input,button')) return;
+        state.brush = i; renderPalette();
+      });
+      const picker = row.querySelector('input');
+      picker.addEventListener('focus', () => snapshot(), { once: true });
+      picker.addEventListener('input', () => {
+        state.colors[i] = picker.value;
+        row.querySelector('.chip').style.background = picker.value;
+        row.querySelector('small').textContent = picker.value.toUpperCase();
+        draw();
+      });
+      picker.addEventListener('change', () => { save(); renderPalette(); });
+      const rm = row.querySelector('.remove');
+      rm.disabled = state.colors.length <= 1;
+      rm.style.visibility = state.colors.length <= 1 ? 'hidden' : '';
+      rm.addEventListener('click', () => removeColor(i));
+      pal.appendChild(row);
+    });
+
+    const tools = $('tools');
+    tools.innerHTML = '';
+    [[ERASE, 'eraser', 'Eraser', 'Clears squares'], [RANDOM, 'random', 'Random brush', 'Each square gets a random color']]
+      .forEach(([key, cls, name, sub]) => {
+        const row = document.createElement('div');
+        row.className = 'swatch' + (state.brush === key ? ' active' : '');
+        row.innerHTML = `<div class="chip ${cls}"></div><div class="name">${name}<small style="font-family:inherit">${sub}</small></div>`;
+        row.addEventListener('click', () => { state.brush = key; renderPalette(); });
+        tools.appendChild(row);
+      });
+  }
+
+  function addColor() {
+    snapshot();
+    const hue = Math.floor(Math.random() * 360);
+    state.colors.push(hslToHex(hue, 45, 55));
+    state.brush = state.colors.length - 1;
+    renderPalette(); draw(); save();
+  }
+
+  function removeColor(i) {
+    if (state.colors.length <= 1) return;
+    snapshot();
+    state.colors.splice(i, 1);
+    // squares using the removed color become empty; later indices shift down
+    state.cells = state.cells.map(c => c === i ? EMPTY : c > i ? c - 1 : c);
+    if (typeof state.brush === 'number') {
+      if (state.brush === i) state.brush = 0;
+      else if (state.brush > i) state.brush--;
+    }
+    renderPalette(); draw(); save();
+  }
+
+  function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const k = n => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return '#' + [f(0), f(8), f(4)].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+  }
+
+  // ---------- actions ----------
+  function exportPNG() {
+    const size = Math.max(10, Math.ceil(1200 / Math.max(state.w, state.h)));
+    const c = document.createElement('canvas');
+    c.width = state.w * size; c.height = state.h * size;
+    paintTile(c.getContext('2d'), 0, 0, size, state.showLines);
+    const a = document.createElement('a');
+    a.download = `tile-${state.w}x${state.h}.png`;
+    a.href = c.toDataURL('image/png');
+    a.click();
+  }
+
+  $('apply').addEventListener('click', () => resize(+$('w').value, +$('h').value));
+  ['w', 'h'].forEach(id => $(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') resize(+$('w').value, +$('h').value);
+  }));
+  $('addColor').addEventListener('click', addColor);
+  $('randomize').addEventListener('click', () => {
+    snapshot(); state.cells = state.cells.map(randIndex); draw(); save();
+  });
+  $('randomEmpty').addEventListener('click', () => {
+    snapshot(); state.cells = state.cells.map(c => c === EMPTY ? randIndex() : c); draw(); save();
+  });
+  $('fillAll').addEventListener('click', () => {
+    if (typeof state.brush !== 'number') return;
+    snapshot(); state.cells.fill(state.brush); draw(); save();
+  });
+  $('clear').addEventListener('click', () => {
+    snapshot(); state.cells.fill(EMPTY); draw(); save();
+  });
+  $('undo').addEventListener('click', undo);
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.target.tagName !== 'INPUT') { e.preventDefault(); undo(); }
+  });
+  $('export').addEventListener('click', exportPNG);
+  $('showLines').addEventListener('change', e => { state.showLines = e.target.checked; draw(); save(); });
+  $('showPreview').addEventListener('change', e => { state.showPreview = e.target.checked; draw(); save(); });
+
+  let resizeTimer;
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(layout, 100); });
+
+  // ---------- init ----------
+  load();
+  $('w').value = state.w; $('h').value = state.h;
+  $('showLines').checked = state.showLines;
+  $('showPreview').checked = state.showPreview;
+  renderPalette();
+  layout();
+})();
+</script>
+</body>
+</html>
