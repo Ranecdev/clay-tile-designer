@@ -138,6 +138,20 @@
   }
   input[type=range] { width: 100%; accent-color: var(--accent); }
   .stack { display: flex; flex-direction: column; gap: 10px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 10px; }
+  .seg button { border-radius: 0; }
+  .seg button:first-child { border-radius: 8px 0 0 8px; }
+  .seg button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+  .seg button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+  /* Usage table */
+  table.usage { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 12px; }
+  table.usage th { text-align: right; font-weight: 600; color: var(--muted); padding: 4px; font-size: 0.75rem; }
+  table.usage th:first-child { text-align: left; }
+  table.usage td { padding: 5px 4px; text-align: right; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  table.usage td:first-child { text-align: left; }
+  table.usage .mini { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.15); vertical-align: -2px; margin-right: 6px; }
+  table.usage tfoot td { font-weight: 600; }
 
   /* Canvas area */
   .stage {
@@ -189,6 +203,10 @@
 
     <section class="card">
       <h2>Colors</h2>
+      <div class="seg">
+        <button id="toolPaint" class="active">Paint</button>
+        <button id="toolFill">Fill bucket</button>
+      </div>
       <div class="palette" id="palette"></div>
       <div style="margin-top:8px">
         <button id="addColor" style="width:100%">+ Add color</button>
@@ -237,11 +255,32 @@
         <label class="check"><input type="checkbox" id="showPreview" checked> Show repeat preview</label>
       </div>
     </section>
+
+    <section class="card">
+      <h2>Color usage</h2>
+      <div class="row">
+        <label class="field">Tile width (cm)
+          <input type="number" id="tileW" min="0.1" step="0.1" value="15">
+        </label>
+        <label class="field">Tile height (cm)
+          <input type="number" id="tileH" min="0.1" step="0.1" value="15">
+        </label>
+        <label class="field">Number of tiles
+          <input type="number" id="tileCount" min="1" step="1" value="1">
+        </label>
+      </div>
+      <table class="usage">
+        <thead><tr><th>Color</th><th>Squares</th><th>%</th><th>Area</th></tr></thead>
+        <tbody id="usageBody"></tbody>
+        <tfoot id="usageFoot"></tfoot>
+      </table>
+      <p class="hint" style="text-align:left; margin-top:8px">Mixed shades are split over the colors they're made of. Area covers all tiles.</p>
+    </section>
   </aside>
 
   <div class="stage">
     <div class="canvas-wrap" id="wrap"><canvas id="grid"></canvas></div>
-    <p class="hint">Tap or drag to paint. Pick a color, the eraser, or the random brush on the left.</p>
+    <p class="hint">Tap or drag to paint, or switch to Fill bucket to fill an area. Pick a color, the eraser, or the random brush on the left.</p>
     <div class="preview" id="previewBox">
       <h3>Repeat preview (3 × 3)</h3>
       <canvas id="preview"></canvas>
@@ -264,8 +303,12 @@
     colors: DEFAULT_COLORS.slice(),
     cells: new Array(64).fill(EMPTY),
     brush: 0,
+    tool: 'paint',
     showLines: true,
     showPreview: true,
+    tileW: 15,
+    tileH: 15,
+    tileCount: 1,
   };
   const history = [];
 
@@ -277,8 +320,8 @@
   // ---------- persistence ----------
   function save() {
     try {
-      const { w, h, colors, cells, showLines, showPreview } = state;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ w, h, colors, cells, showLines, showPreview }));
+      const { w, h, colors, cells, showLines, showPreview, tileW, tileH, tileCount } = state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ w, h, colors, cells, showLines, showPreview, tileW, tileH, tileCount }));
     } catch (e) {}
   }
   function load() {
@@ -381,6 +424,34 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     paintTile(ctx, 0, 0, cellSize, state.showLines);
     drawPreview();
+    renderUsage();
+  }
+
+  // ---------- color usage ----------
+  function renderUsage() {
+    const counts = new Array(state.colors.length).fill(0);
+    let empty = 0;
+    for (const c of state.cells) {
+      if (c === EMPTY) empty++;
+      else if (typeof c === 'number') counts[c]++;
+      else for (const [i, wt] of c.m) counts[i] += wt;
+    }
+    const total = state.w * state.h;
+    const sqArea = (state.tileW / state.w) * (state.tileH / state.h) * state.tileCount;
+    const fmtCount = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+    const fmtArea = cm2 => !isFinite(cm2) ? '–'
+      : cm2 >= 10000 ? (cm2 / 10000).toFixed(2) + ' m²'
+      : cm2.toFixed(cm2 < 10 ? 1 : 0) + ' cm²';
+    const row = (chip, name, v) =>
+      `<tr><td>${chip}${name}</td><td>${fmtCount(v)}</td><td>${(v / total * 100).toFixed(1)}</td><td>${fmtArea(v * sqArea)}</td></tr>`;
+    let html = '';
+    counts.forEach((v, i) => {
+      html += row(`<span class="mini" style="background:${state.colors[i]}"></span>`, `Color ${i + 1}`, v);
+    });
+    if (empty) html += row('<span class="mini chip eraser"></span>', 'Empty', empty);
+    $('usageBody').innerHTML = html;
+    $('usageFoot').innerHTML =
+      `<tr><td>Total</td><td>${total}</td><td>100</td><td>${fmtArea(total * sqArea)}</td></tr>`;
   }
 
   function drawPreview() {
@@ -423,9 +494,40 @@
     draw();
   }
 
+  const cellKey = c => typeof c === 'number' ? c : JSON.stringify(c.m);
+
+  // flood-fill the connected area (4-neighbors) of squares matching the start square
+  function bucketFill(start) {
+    if (start < 0) return;
+    const b = state.brush;
+    const target = state.cells[start];
+    const key = cellKey(target);
+    if (typeof b === 'number' && key === cellKey(b)) return;
+    if (b === ERASE && target === EMPTY) return;
+    const { w, h, cells } = state;
+    const seen = new Uint8Array(w * h);
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const i = stack.pop();
+      cells[i] = b === ERASE ? EMPTY : b === RANDOM ? randIndex() : b;
+      const x = i % w, y = (i - x) / w;
+      for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (!seen[j] && cellKey(cells[j]) === key) { seen[j] = 1; stack.push(j); }
+      }
+    }
+  }
+
   canvas.addEventListener('pointerdown', e => {
     e.preventDefault();
     snapshot();
+    if (state.tool === 'fill') {
+      bucketFill(cellAt(e));
+      draw(); save();
+      return;
+    }
     painting = true; lastCell = -1;
     canvas.setPointerCapture(e.pointerId);
     applyBrush(cellAt(e));
@@ -615,6 +717,18 @@
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.target.tagName !== 'INPUT') { e.preventDefault(); undo(); }
   });
   $('export').addEventListener('click', exportPNG);
+  function setTool(t) {
+    state.tool = t;
+    $('toolPaint').classList.toggle('active', t === 'paint');
+    $('toolFill').classList.toggle('active', t === 'fill');
+  }
+  $('toolPaint').addEventListener('click', () => setTool('paint'));
+  $('toolFill').addEventListener('click', () => setTool('fill'));
+  [['tileW', 'tileW'], ['tileH', 'tileH'], ['tileCount', 'tileCount']].forEach(([id, k]) =>
+    $(id).addEventListener('input', () => {
+      const v = parseFloat($(id).value);
+      if (v > 0) { state[k] = v; renderUsage(); save(); }
+    }));
   $('showLines').addEventListener('change', e => { state.showLines = e.target.checked; draw(); save(); });
   $('showPreview').addEventListener('change', e => { state.showPreview = e.target.checked; draw(); save(); });
 
@@ -626,6 +740,9 @@
   $('w').value = state.w; $('h').value = state.h;
   $('showLines').checked = state.showLines;
   $('showPreview').checked = state.showPreview;
+  $('tileW').value = state.tileW;
+  $('tileH').value = state.tileH;
+  $('tileCount').value = state.tileCount;
   renderPalette();
   layout();
 })();
