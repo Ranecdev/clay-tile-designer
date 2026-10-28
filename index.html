@@ -209,8 +209,11 @@
             <option value="radial">Radial (center out)</option>
           </select>
         </label>
-        <label class="field">Blend: <span id="gBlendVal">50%</span>
+        <label class="field">Scatter squares: <span id="gBlendVal">50%</span>
           <input type="range" id="gBlend" min="0" max="100" value="50">
+        </label>
+        <label class="field">Mix colors into shades: <span id="gMixVal">0%</span>
+          <input type="range" id="gMix" min="0" max="100" value="0">
         </label>
         <label class="check"><input type="checkbox" id="gMirror"> Mirror (symmetric, repeats seamlessly)</label>
         <label class="check"><input type="checkbox" id="gReverse"> Reverse color order</label>
@@ -335,7 +338,19 @@
     cx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function colorOf(i) { return i === EMPTY ? '#ffffff' : state.colors[i]; }
+  // A cell is EMPTY, a palette index, or a shade {a, b, f}: palette color a
+  // mixed with palette color b by fraction f, resolved at draw time.
+  function colorOf(c) {
+    if (c === EMPTY) return '#ffffff';
+    if (typeof c === 'number') return state.colors[c];
+    return mixHex(state.colors[c.a], state.colors[c.b], c.f);
+  }
+
+  function mixHex(h1, h2, f) {
+    const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const a = p(h1), b = p(h2);
+    return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * f).toString(16).padStart(2, '0')).join('');
+  }
 
   function paintTile(cx, ox, oy, size, lines) {
     for (let y = 0; y < state.h; y++)
@@ -474,7 +489,14 @@
     snapshot();
     state.colors.splice(i, 1);
     // squares using the removed color become empty; later indices shift down
-    state.cells = state.cells.map(c => c === i ? EMPTY : c > i ? c - 1 : c);
+    const shift = c => c > i ? c - 1 : c;
+    state.cells = state.cells.map(c => {
+      if (typeof c === 'number') return c === i ? EMPTY : shift(c);
+      // a shade that used the removed color collapses to its other color
+      if (c.a === i) return shift(c.b);
+      if (c.b === i) return shift(c.a);
+      return { a: shift(c.a), b: shift(c.b), f: c.f };
+    });
     if (typeof state.brush === 'number') {
       if (state.brush === i) state.brush = 0;
       else if (state.brush > i) state.brush--;
@@ -501,6 +523,7 @@
     const blend = (+$('gBlend').value / 100) * 1.5;
     const mirror = $('gMirror').checked;
     const reverse = $('gReverse').checked;
+    const mix = +$('gMix').value / 100;
     const { w, h } = state;
     const fx = x => w > 1 ? x / (w - 1) : 0.5;
     const fy = y => h > 1 ? y / (h - 1) : 0.5;
@@ -516,7 +539,13 @@
         if (mirror) t = 1 - Math.abs(2 * t - 1);
         if (reverse) t = 1 - t;
         const pos = t * n - 0.5 + (Math.random() - 0.5) * blend;
-        cells[y * w + x] = Math.max(0, Math.min(n - 1, Math.round(pos)));
+        const band = Math.max(0, Math.min(n - 1, Math.round(pos)));
+        // mix moves each square from its band color toward the smooth gradient
+        const q = band * (1 - mix) + t * (n - 1) * mix;
+        const a = Math.floor(q), f = Math.round((q - a) * 100) / 100;
+        cells[y * w + x] = f === 0 || a >= n - 1 ? Math.min(a, n - 1)
+          : f === 1 ? a + 1
+          : { a, b: a + 1, f };
       }
     state.cells = cells;
     draw(); save();
@@ -526,7 +555,8 @@
     snapshot(); applyGradient(); gradientLive = true;
   });
   $('gBlend').addEventListener('input', () => { $('gBlendVal').textContent = $('gBlend').value + '%'; });
-  ['gDir', 'gBlend', 'gMirror', 'gReverse'].forEach(id =>
+  $('gMix').addEventListener('input', () => { $('gMixVal').textContent = $('gMix').value + '%'; });
+  ['gDir', 'gBlend', 'gMix', 'gMirror', 'gReverse'].forEach(id =>
     $(id).addEventListener('input', () => { if (gradientLive) applyGradient(); }));
   // any other edit ends the live-update session so tweaks don't overwrite painting
   canvas.addEventListener('pointerdown', () => { gradientLive = false; });
