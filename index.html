@@ -398,12 +398,34 @@
     return '#' + rgb.map(v => Math.min(255, Math.round(v)).toString(16).padStart(2, '0')).join('');
   }
 
-  function paintTile(cx, ox, oy, size, lines) {
-    for (let y = 0; y < state.h; y++)
-      for (let x = 0; x < state.w; x++) {
-        cx.fillStyle = colorOf(state.cells[y * state.w + x]);
-        cx.fillRect(ox + x * size, oy + y * size, size, size);
+  // The tile is kept as a bitmap with one pixel per square; every view scales
+  // it up, so a full redraw is a single drawImage instead of one fill per square.
+  const bitmap = document.createElement('canvas');
+  const bctx = bitmap.getContext('2d');
+
+  function rebuildBitmap() {
+    const { w, h, cells } = state;
+    if (bitmap.width !== w || bitmap.height !== h) { bitmap.width = w; bitmap.height = h; }
+    const img = bctx.createImageData(w, h);
+    const rgbCache = new Map();
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      const key = typeof c === 'number' ? c : JSON.stringify(c.m);
+      let rgb = rgbCache.get(key);
+      if (!rgb) {
+        const hx = colorOf(c);
+        rgb = [1, 3, 5].map(k => parseInt(hx.slice(k, k + 2), 16));
+        rgbCache.set(key, rgb);
       }
+      img.data.set(rgb, i * 4);
+      img.data[i * 4 + 3] = 255;
+    }
+    bctx.putImageData(img, 0, 0);
+  }
+
+  function paintTile(cx, ox, oy, size, lines) {
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(bitmap, ox, oy, state.w * size, state.h * size);
     if (lines) {
       cx.strokeStyle = 'rgba(0,0,0,0.15)';
       cx.lineWidth = 1;
@@ -421,10 +443,43 @@
   }
 
   function draw() {
+    rebuildBitmap();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     paintTile(ctx, 0, 0, cellSize, state.showLines);
-    drawPreview();
-    renderUsage();
+    scheduleExtras();
+  }
+
+  // Redraw a single square after painting it.
+  function drawCell(i) {
+    const x = i % state.w, y = (i - x) / state.w;
+    const color = colorOf(state.cells[i]);
+    bctx.fillStyle = color;
+    bctx.fillRect(x, y, 1, 1);
+    const px = x * cellSize, py = y * cellSize;
+    ctx.fillStyle = color;
+    ctx.fillRect(px, py, cellSize, cellSize);
+    if (state.showLines) {
+      // the fill covers this square's left and top grid lines; put them back
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(px) + 0.5, py); ctx.lineTo(Math.round(px) + 0.5, py + cellSize);
+      ctx.moveTo(px, Math.round(py) + 0.5); ctx.lineTo(px + cellSize, Math.round(py) + 0.5);
+      ctx.stroke();
+    }
+    scheduleExtras();
+  }
+
+  // The repeat preview and usage table update at most once per frame.
+  let extrasPending = false;
+  function scheduleExtras() {
+    if (extrasPending) return;
+    extrasPending = true;
+    requestAnimationFrame(() => {
+      extrasPending = false;
+      drawPreview();
+      renderUsage();
+    });
   }
 
   // ---------- color usage ----------
@@ -491,7 +546,7 @@
     lastCell = i;
     const b = state.brush;
     state.cells[i] = b === ERASE ? EMPTY : b === RANDOM ? randIndex() : b;
-    draw();
+    drawCell(i);
   }
 
   const cellKey = c => typeof c === 'number' ? c : JSON.stringify(c.m);
@@ -533,7 +588,7 @@
     applyBrush(cellAt(e));
   });
   canvas.addEventListener('pointermove', e => { if (painting) applyBrush(cellAt(e)); });
-  const stop = () => { if (painting) { painting = false; save(); } };
+  const stop = () => { if (painting) { painting = false; draw(); save(); } };
   canvas.addEventListener('pointerup', stop);
   canvas.addEventListener('pointercancel', stop);
 
